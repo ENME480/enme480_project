@@ -102,7 +102,7 @@ class ArucoTracker(Node):
         frame, ids, corners = self.detect_aruco(frame)
         if ids is not None:
             frame, ids, marker_centers = self.get_aruco_center(frame, ids, corners)
-            frame, _ = self.image_to_table_frame(frame, ids, marker_centers)
+            frame, _ = self.image_frame_to_table_frame(frame, ids, marker_centers)
 
         # Publish the processed image
         processed_image_msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
