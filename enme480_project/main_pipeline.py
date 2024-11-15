@@ -136,7 +136,7 @@ class BlockMover:
 
         ################## YOUR CODE ENDS HERE #######################################
 
-    def process_blocks(self, video_device, ids, destination, sort_method):
+    def process_blocks(self, video_device, ids, destination):
 
         '''
         This function is used for processing the Aruco Markers, find their centers and convert them to table frame. Once that's done, the function decides the sequence of block picking and end destination for each block.
@@ -184,7 +184,7 @@ def main():
         # Initialize BlockMover and start moving blocks
         block_mover = BlockMover(ur3e_controller, aruco_tracker, dest_pose)
         block_ids = [100, 150, 200]  # Block IDs to move
-        block_mover.process_blocks("/dev/video0", block_ids, dest_pose, sort_method=2)
+        block_mover.process_blocks("/dev/video0", block_ids, dest_pose)
 
 
     except KeyboardInterrupt:
