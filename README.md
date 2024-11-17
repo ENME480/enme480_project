@@ -1,3 +1,6 @@
+
+Detailed instructions at the [Lab-Code repository](https://github.com/ENME480/Lab-Code/blob/main/Final%20Project/Final_Project_Details.md)
+
 # Camera Calibration
 
 You need to edit two files:
@@ -17,4 +20,3 @@ If you get a missing package error try running
 ``` pip install keyboard ```
 ``` pip install pydantic=1.10.9```
 
-Detailed instructions at the [Lab-Code repository](https://github.com/ENME480/Lab-Code/blob/main/Final%20Project/Final_Project_Details.md)
