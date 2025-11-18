@@ -94,8 +94,8 @@ def GetStream(video_in, camera_matrix, distortion_coefficients, perspective_matr
 if __name__ == '__main__':
 
     # Load the Camera to Base Transformation Matrix
-    perspective_matrix = np.load("/home/enme480_docker/ENME480_ws/src/enme480_project/enme480_project/perspective_matrix.npy")
-    path_to_camera_matrix = '/home/enme480_docker/ENME480_ws/src/enme480_project/enme480_project/config/logitech_webcam_640x480.yaml'
+    perspective_matrix = np.load("/home/enme480_docker/enme480_ws/src/enme480_project/enme480_project/perspective_matrix.npy")
+    path_to_camera_matrix = '/home/enme480_docker/enme480_ws/src/enme480_project/enme480_project/config/logitech_webcam_640x480.yaml'
 
     camera_matrix, distortion_coefficients = get_camera_calibration_params(path_to_camera_matrix)
     cam_0 = "/dev/video0"
