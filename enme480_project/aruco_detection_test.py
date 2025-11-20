@@ -20,37 +20,47 @@ def detect_aruco(img, camera_matrix, distortion_coefficients):
     return output, ids, corners
 
 def get_aruco_center(img, ids, corners):
-    marker_centers = [(np.nan, np.nan)] * len(ids)
-    for i in range(len(ids)):
-        corner = corners[i][0, :, :]
-        marker_centers[i] = np.mean(corner, axis=0)
+    if ids is not None:
+        marker_centers = [(np.nan, np.nan)] * len(ids)
+        for i in range(len(ids)):
+            corner = corners[i][0, :, :]
+            marker_centers[i] = np.mean(corner, axis=0)
 
-        x = marker_centers[i][0]
-        y = marker_centers[i][1]
-        # Draw the detected marker center onto the frame with yellow color
-        img = cv2.circle(img, (int(x), int(y)), 3, (0, 255, 255), -1)
-
+            x = marker_centers[i][0]
+            y = marker_centers[i][1]
+            # Draw the detected marker center onto the frame with yellow color
+            img = cv2.circle(img, (int(x), int(y)), 3, (0, 255, 255), -1)
+    else:
+        marker_centers = None
     return img, ids, marker_centers
 
 def image_frame_to_table_frame(img, ids, marker_centers, perspective_matrix):
-    marker_centers_in_table_frame = [(np.nan, np.nan)] * len(ids)
+    if ids is not None:
+        marker_centers_in_table_frame = [(np.nan, np.nan)] * len(ids)
 
-    ############################ YOUR CODE STARTS HERE #####################################
+        ############################ YOUR CODE STARTS HERE #####################################
 
-    for i in range(len(ids)):
-
-
+        for i in range(len(ids)):
 
 
-        # Format the coordinates as strings for display
-        value1 = ""
-        value2 = ""
 
-        # Display the information on the image
-        img = cv2.putText(img, "Aruco ID: " + str(ids[i]), (400, 20 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2, cv2.LINE_AA, False) 
-        img = cv2.putText(img, "X (mm): " + value1, (400, 50 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False) 
-        img = cv2.putText(img, "Y (mm): " + value2, (400, 80 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False)
-    ############################ YOUR CODE ENDS HERE #####################################
+
+            # Assign final x and y coordinates after transformation
+
+            marker_centers_in_table_frame = None
+
+            # Format the coordinates as strings for display
+            value1 = ""
+            value2 = ""
+
+
+            # Display the information on the image
+            img = cv2.putText(img, "Aruco ID: " + str(ids[i]), (400, 20 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2, cv2.LINE_AA, False) 
+            img = cv2.putText(img, "X (mm): " + value1, (400, 50 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False) 
+            img = cv2.putText(img, "Y (mm): " + value2, (400, 80 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False)
+        ############################ YOUR CODE ENDS HERE #####################################
+    else:
+        marker_centers_in_table_frame = None 
 
     return img, marker_centers_in_table_frame
 
