@@ -21,7 +21,8 @@ setup(
     entry_points={
         'console_scripts': [
             'main_pipeline = enme480_project.main_pipeline:main',
-            'aruco_tracker = enme480_project.block_detection_aruco:main'
+            'aruco_tracker = enme480_project.block_detection_aruco:main',
+            'perspective_gazebo = enme480_project.perspective_gazebo:main'
         ],
     },
 )

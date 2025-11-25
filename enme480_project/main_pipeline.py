@@ -20,19 +20,28 @@ from rclpy.node import Node
 
 # import ROS message libraries
 
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point
 from cv_bridge import CvBridge, CvBridgeError
 
 # import custom messages and functions
-from ur3e_mrc.msg import PositionUR3e, CommandUR3e, GripperInput
+from ur3e_mrc_msgs.msg import PositionUR3e, CommandUR3e, GripperInput
 
-from enme480_project.kinematic_functions import KinematicFunctions
-from enme480_project.block_detection_aruco import ArucoTracker 
+from enme480_project_solved.kinematic_functions import KinematicFunctions
+from enme480_project_solved.block_detection_aruco import ArucoTracker 
 
 KF = KinematicFunctions()
 ik = KF.inverse_kinematics
+
+# Global list of nodes to spin
+NODES = []
+
+def spin_all(timeout=0.05):
+    """Spin all nodes once with given timeout (single-threaded)."""
+    for node in NODES:
+        rclpy.spin_once(node, timeout_sec=timeout)
+
 
 #################### END OF IMPORT #########################
 
@@ -51,9 +60,9 @@ class UR3eController(Node):
         self.accel = 0.1
 
         # Publishers and Subscribers
-        self.pub_command = self.create_publisher(CommandUR3e, 'ur3/command', 10)
-        self.sub_position = self.create_subscription(PositionUR3e, 'ur3/position', self.position_callback, 10)
-        self.sub_input = self.create_subscription(GripperInput, 'ur3/gripper_input', self.input_callback, 10)
+        self.pub_command = self.create_publisher(CommandUR3e, 'ur3e/command', 10)
+        self.sub_position = self.create_subscription(PositionUR3e, 'ur3e/position', self.position_callback, 10)
+        self.sub_input = self.create_subscription(Bool, '/gripper/vac_on', self.input_callback, 10)
 
         # Timer (if needed)
         # self.timer = self.create_timer(1.0 / self.SPIN_RATE, self.timer_callback)
@@ -64,9 +73,13 @@ class UR3eController(Node):
         self.current_position_set = True
 
     def input_callback(self, msg):
-        self.digital_in_0 = msg.dig_in & 1  
+        if msg.data == True:
+            self.digital_in_0 = 1
+        else:
+            self.digital_in_0 = 0
+        # self.digital_in_0 = msg.dig_in & 1  
 
-    def move_arm(self, dest):
+    def move_arm(self, dest, timeout=10.0):
 
         '''
         CommandUR3e.msg:
@@ -83,12 +96,18 @@ class UR3eController(Node):
         ################## YOUR CODE ENDS HERE ##################################
 
         # Wait until the robot reaches the goal
-        while not self.at_goal(dest):
-            rclpy.spin_once(self)
-            time.sleep(0.05)  # Adjust sleep duration as needed
-            pass
+        start = time.time()
+        while rclpy.ok() and not self.at_goal(dest):
+            if time.time() - start > timeout:
+                err = self.goal_error(dest)
+                self.get_logger().warn(
+                    f"Timeout waiting for arm to reach destination. "
+                    f"Joint errors: {['%.4f' % e for e in err]}"
+                )
+                break
+            spin_all(0.05)
 
-    def gripper_control(self, toggle_state):
+    def gripper_control(self, toggle_state, timeout=5.0):
 
         '''
         CommandUR3e.msg:
@@ -105,14 +124,18 @@ class UR3eController(Node):
         ################## YOUR CODE ENDS HERE ##################################
 
         # Wait until the robot reaches the goal
-        while not self.at_goal(self.current_position):
-            rclpy.spin_once(self)
-            time.sleep(0.05)  # Adjust sleep duration as needed
-            pass
+        start = time.time()
+        while rclpy.ok() and not self.at_goal(self.current_position):
+            if time.time() - start > timeout:
+                self.get_logger().warn("Timeout waiting for gripper command to apply.")
+                break
+            spin_all(0.05)
 
-    def at_goal(self, destination):
-        tolerance = 0.0005
+    def at_goal(self, destination, tolerance=0.0008):
         return all(abs(self.thetas[i] - destination[i]) < tolerance for i in range(6))
+
+    def goal_error(self, destination):
+        return [abs(self.thetas[i] - destination[i]) for i in range(6)]
 
 
 class BlockMover:
@@ -136,7 +159,7 @@ class BlockMover:
 
         ################## YOUR CODE ENDS HERE #######################################
 
-    def process_blocks(self, video_device, ids, destination):
+    def process_blocks(self, destination):
 
         '''
         This function is used for processing the Aruco Markers, find their centers and convert them to table frame. Once that's done, the function decides the sequence of block picking and end destination for each block.
@@ -153,7 +176,22 @@ class BlockMover:
 
         '''
 
-        frame = self.aruco_tracker.get_frame(video_device)
+        # Spin the ArucoTracker node until we have at least one detection
+        self.aruco_tracker.get_logger().info("Waiting for ArUco detections from /camera...")
+        start = time.time()
+
+        while rclpy.ok() and self.aruco_tracker.latest_ids is None:
+            if time.time() - start > 10.0:
+                print("Timed out waiting for ArUco detections.")
+                return
+            spin_all(0.1)
+
+        temp_ids = self.aruco_tracker.latest_ids
+        marker_positions = self.aruco_tracker.latest_positions
+
+        if temp_ids is None or len(temp_ids) == 0:
+            print("No ArUco markers detected, aborting.")
+            return
 
         ################## YOUR CODE STARTS HERE ##################################
 
@@ -170,21 +208,34 @@ def main():
         ur3e_controller = UR3eController()
 
         aruco_tracker = ArucoTracker(
-            camera_matrix_path='/home/enme480_docker/ENME480_ws/src/enme480_project/enme480_project/config/logitech_webcam_640x480.yaml',
-            perspective_matrix_path='/home/enme480_docker/ENME480_ws/src/enme480_project/enme480_project/perspective_matrix.npy'
+            camera_matrix_path='/home/enme480_docker/enme480_ws/src/enme480_project_solved/enme480_project_solved/config/logitech_webcam_640x480.yaml',
+            perspective_matrix_path='/home/enme480_docker/enme480_ws/src/enme480_project_solved/enme480_project_solved/perspective_matrix.npy'
         )
+
+        # Register nodes for spin_all()
+        global NODES
+        NODES = [ur3e_controller, aruco_tracker]
+
+        # wait for first joint state so controller is actually up
+        start = time.time()
+        while (not ur3e_controller.current_position_set) and rclpy.ok():
+            if time.time() - start > 5.0:
+                ur3e_controller.get_logger().warn(
+                    "No joint state received within 5s. Continuing anyway."
+                )
+                break
+            spin_all(0.1)
 
         # Define destination positions for each block. These are recommended sorting positions for different colors. The given z is the lowest level in the stack
         dest_pose = [
-            (0.1, -0.1, 0.045, 0), # Yellow Drop Off 
-            (0.2, -0.1, 0.045, 0), # Red Drop Off
-            (0.3, -0.1, 0.045, 0), # Blue Drop Off
+            (0.1, -0.1, 0.057, 0), # Yellow Drop Off 
+            (0.2, -0.1, 0.057, 0), # Red Drop Off
+            (0.3, -0.1, 0.057, 0), # Blue Drop Off
         ]
 
         # Initialize BlockMover and start moving blocks
         block_mover = BlockMover(ur3e_controller, aruco_tracker, dest_pose)
-        block_ids = [100, 150, 200]  # Block IDs to move
-        block_mover.process_blocks("/dev/video0", block_ids, dest_pose)
+        block_mover.process_blocks(dest_pose)
 
 
     except KeyboardInterrupt:

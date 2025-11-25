@@ -17,36 +17,23 @@ class ArucoTracker(Node):
         self.camera_matrix, self.distortion_coefficients = self.load_camera_calibration(camera_matrix_path)
         self.perspective_matrix = np.load(perspective_matrix_path)
         
-        # Initialize ROS2 subscribers, publishers, and CvBridge
+        # Internal state
+        self.latest_ids = None
+        self.latest_positions = None
+        self.latest_frame = None
+
+        # ROS2 interfaces
         self.bridge = CvBridge()
-        self.image_subscription = self.create_subscription(Image, '/camera1/image_raw', self.image_callback, 10)
+        self.image_subscription = self.create_subscription(Image, '/camera', self.image_callback, 10)
         self.image_publisher = self.create_publisher(Image, '/aruco_detection/image', 10)
         self.position_publisher = self.create_publisher(String, '/aruco_detection/positions', 10)
+
 
     @staticmethod
     def crop_frame(image):
         margin_up, margin_down, margin_left, margin_right = 230, 0, 60, 52
         h, w, _ = image.shape
         return image[margin_up:h-margin_down, margin_left:w-margin_right]
-
-    def get_frame(self,video_in):
-        cap = cv2.VideoCapture(video_in)
-        if not cap.isOpened():
-            print("Error opening cam.")
-            exit(0)
-        '''
-        #cap.set(1, k_frame)
-        rval, frame = cap.read()
-        frame_filename = ""
-        frame = CropFrame(frame)
-        cv2.imwrite(frame_filename, frame)
-        print("Obtaining current frame.")
-        '''
-        rval, frame = cap.read()
-
-        print("Obtaining current frame.")
-
-        return frame
 
     def load_camera_calibration(self, path):
         with open(path, 'r') as file:
@@ -70,6 +57,9 @@ class ArucoTracker(Node):
         return output, ids, corners
 
     def get_aruco_center(self, img, ids, corners):
+        if ids is None or corners is None:
+            return img, [], []
+
         marker_centers = [(np.nan, np.nan)] * len(ids)
         for i in range(len(ids)):
             corner = corners[i][0, :, :]
@@ -78,40 +68,76 @@ class ArucoTracker(Node):
             img = cv2.circle(img, (int(x), int(y)), 3, (0, 255, 255), -1)
         return img, ids, marker_centers
 
+
     def image_frame_to_table_frame(self, img, ids, marker_centers, perspective_matrix):
+        if ids is None or len(ids) == 0:
+            return img, []
+
         marker_centers_in_table_frame = [(np.nan, np.nan)] * len(ids)
 
         ################################### YOUR CODE STARTS HERE ##################################################
+        for i in range(len(ids)):
+            
+            
+            # Apply perspective transformation
+            
+            
+            # Normalize to convert from homogeneous to 2D coordinates
 
-        # Format the coordinates as strings for display
-    
-        # Display the information on the image
-        img = cv2.putText(img, "Aruco ID: " + str(ids[i]), (400, 20 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2, cv2.LINE_AA, False) 
-        img = cv2.putText(img, "X (mm): " + value1, (400, 50 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False) 
-        img = cv2.putText(img, "Y (mm): " + value2, (400, 80 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False)
+
+            # Store the transformed coordinates
+            marker_centers_in_table_frame[i] = None
+
+            # Format the coordinates as strings for display
+            value1 = ""
+            value2 = ""
+
+            # Display the information on the image
+            img = cv2.putText(img, "Aruco ID: " + str(ids[i]), (400, 20 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2, cv2.LINE_AA, False) 
+            img = cv2.putText(img, "X (mm): " + value1, (400, 50 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False) 
+            img = cv2.putText(img, "Y (mm): " + value2, (400, 80 + 90*i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False) 
+
         ################################### YOUR CODE ENDS HERE ####################################################
         
         return img, marker_centers_in_table_frame
 
     def image_callback(self, msg):
         # Convert ROS2 image message to OpenCV format
-        # print(msg)
         frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        self.latest_frame = frame.copy()
 
         # Process the frame
         frame, ids, corners = self.detect_aruco(frame)
         if ids is not None:
             frame, ids, marker_centers = self.get_aruco_center(frame, ids, corners)
-            frame, _ = self.image_frame_to_table_frame(frame, ids, marker_centers)
+            frame, marker_positions = self.image_frame_to_table_frame(
+                frame, ids, marker_centers, self.perspective_matrix
+            )
 
-        # Publish the processed image
+            # Store for others to use
+            self.latest_ids = ids
+            self.latest_positions = marker_positions
+
+            # Optional: publish positions as a string for debugging
+            pos_msg = String()
+            pos_msg.data = str(list(zip(ids.flatten().tolist(), marker_positions)))
+            self.position_publisher.publish(pos_msg)
+        else:
+            self.latest_ids = None
+            self.latest_positions = None
+
+        # Publish the processed image for visualization
         processed_image_msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
         self.image_publisher.publish(processed_image_msg)
 
+    def get_latest_detections(self):
+        return self.latest_ids, self.latest_positions
+
+
 def main(args=None):
     rclpy.init(args=args)
-    camera_matrix_path = '/home/enme480_docker/ENME480_ws/src/enme480_project/enme480_project/config/logitech_webcam_640x480.yaml'
-    perspective_matrix_path = '/home/enme480_docker/ENME480_ws/src/enme480_project/enme480_project/perspective_matrix.npy'
+    camera_matrix_path = '/home/enme480_docker/enme480_ws/src/enme480_project/enme480_project/config/logitech_webcam_640x480.yaml'
+    perspective_matrix_path = '/home/enme480_docker/enme480_ws/src/enme480_project/enme480_project/perspective_matrix.npy'
     
     # Initialize and spin the Aruco tracker node
     tracker = ArucoTracker(camera_matrix_path, perspective_matrix_path)
