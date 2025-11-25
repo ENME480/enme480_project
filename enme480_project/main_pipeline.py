@@ -38,7 +38,14 @@ ik = KF.inverse_kinematics
 NODES = []
 
 def spin_all(timeout=0.05):
-    """Spin all nodes once with given timeout (single-threaded)."""
+    """
+    Spin all registered ROS2 nodes once with a given timeout.
+
+    This helper keeps the example single-threaded by calling `rclpy.spin_once`
+    on every node in the global `NODES` list. It is used throughout the script
+    anywhere we need callbacks (e.g., joint state updates, camera images)
+    to be processed without starting a full blocking spin loop.
+    """
     for node in NODES:
         rclpy.spin_once(node, timeout_sec=timeout)
 
@@ -48,6 +55,17 @@ def spin_all(timeout=0.05):
 class UR3eController(Node):
 
     def __init__(self):
+        """
+        Initialize the UR3e controller node and create ROS2 I/O.
+
+        - Sets up default home joint configuration and internal state used
+          to track the robot's current joint positions and gripper input.
+        - Creates publishers and subscribers for commanding the UR3e arm
+          (`ur3e/command`), reading joint positions (`ur3e/position`),
+          and reading the gripper vacuum input (`/gripper/vac_on`).
+        - You should not need to modify this constructor for basic pick-and-place
+          behavior; your logic will typically go in the methods below.
+        """
         super().__init__('ur3e_controller')
         self.home = [np.radians(85), np.radians(-45), np.radians(45), np.radians(-90), np.radians(-90), np.radians(90)]
         self.current_position = self.home
@@ -68,11 +86,27 @@ class UR3eController(Node):
         # self.timer = self.create_timer(1.0 / self.SPIN_RATE, self.timer_callback)
 
     def position_callback(self, msg):
+        """
+        ROS2 subscription callback for joint positions.
+
+        Each time a `PositionUR3e` message arrives, this updates the internal
+        joint vector (`self.thetas` and `self.current_position`) and sets
+        `self.current_position_set` to indicate that at least one valid joint
+        state has been received from the real or simulated robot.
+        """
         self.thetas = msg.position
         self.current_position = list(self.thetas)
         self.current_position_set = True
 
     def input_callback(self, msg):
+        """
+        ROS2 subscription callback for the vacuum gripper digital input.
+
+        The incoming message indicates whether the gripper suction is detected
+        as on or off. This method maps that information to a simple integer
+        flag (`self.digital_in_0`) that can be used by higher-level logic
+        to confirm that a grasp has succeeded or that a block has been released.
+        """
         if msg.data == True:
             self.digital_in_0 = 1
         else:
@@ -81,15 +115,44 @@ class UR3eController(Node):
 
     def move_arm(self, dest, timeout=10.0):
 
-        '''
-        CommandUR3e.msg:
-                float64[] destination  ----> joint angles
-                float64 v ----> velocity
-                float64 a ----> acceleration
-                bool io_0 ----> vacuum gripper input (True/False)
-        '''
+        """
+        Command the UR3e arm to move to a joint-space goal.
+
+        - `dest` is a list of 6 joint angles (in radians) representing the
+          desired target pose for the robot.
+        - Inside the YOUR CODE section you must create and publish a
+          `CommandUR3e` message that sets:
+              - `destination` to the `dest` list,
+              - `v` and `a` to the velocity and acceleration stored in
+                `self.vel` and `self.accel`,
+              - `io_0` to the current gripper state (do not change the gripper
+                here; just preserve its current on/off value).
+        - After publishing the command, the loop below waits until the robot
+          has reached the goal, or until `timeout` seconds have elapsed.
+        """
+
+        # CommandUR3e.msg:
+        #         float64[] destination  ----> joint angles
+        #         float64 v ----> velocity
+        #         float64 a ----> acceleration
+        #         bool io_0 ----> vacuum gripper input (True/False)
 
         ################## YOUR CODE STARTS HERE ##################################
+        # EXPECTATION: Construct a CommandUR3e message for a pure arm move.
+        #
+        # Typical steps to implement here:
+        #   1. Create an instance of CommandUR3e.
+        #   2. Set `msg.destination` to the provided `dest` joint list.
+        #   3. Set `msg.v` and `msg.a` using `self.vel` and `self.accel`,
+        #      so that all arm moves are executed with the configured speed.
+        #   4. Set `msg.io_0` to reflect the current gripper state
+        #      (e.g., based on `self.gripper_toggle_state` or similar logic),
+        #      but do NOT toggle the gripper here.
+        #   5. Publish the message on `self.pub_command` to send it to the
+        #      UR3e control interface.
+        #
+        # Do not modify the waiting loop below; it already waits for the
+        # robot to reach the desired destination using `self.at_goal`.
         
 
 
@@ -109,15 +172,47 @@ class UR3eController(Node):
 
     def gripper_control(self, toggle_state, timeout=5.0):
 
-        '''
-        CommandUR3e.msg:
-                float64[] destination  ----> joint angles
-                float64 v ----> velocity
-                float64 a ----> acceleration
-                bool io_0 ----> vacuum gripper input (True/False)
-        '''
+        """
+        Command the UR3e gripper on or off while holding the current pose.
+
+        - `toggle_state` is a boolean indicating the desired gripper vacuum
+          state (`True` for suction on, `False` for suction off).
+        - Inside the YOUR CODE section you must create and publish a
+          `CommandUR3e` message that:
+              - Keeps `destination` equal to the robot's current joint position
+                (i.e., no motion in joint space).
+              - Uses the standard velocity and acceleration (`self.vel`,
+                `self.accel`) to maintain consistency with other commands.
+              - Sets `io_0` according to `toggle_state` so the gripper is
+                actually toggled.
+        - The loop below waits until the command has been applied or until
+          `timeout` seconds have elapsed.
+        """
+
+        # CommandUR3e.msg:
+        #         float64[] destination  ----> joint angles
+        #         float64 v ----> velocity
+        #         float64 a ----> acceleration
+        #         bool io_0 ----> vacuum gripper input (True/False)
 
         ################## YOUR CODE STARTS HERE ##################################
+        # EXPECTATION: Construct a CommandUR3e message to toggle the gripper.
+        #
+        # Typical steps to implement here:
+        #   1. Create an instance of CommandUR3e.
+        #   2. Set `msg.destination` to `self.current_position` so the robot
+        #      holds its current joint configuration.
+        #   3. Set `msg.v` and `msg.a` using `self.vel` and `self.accel`
+        #      (even though no motion is desired, these fields must be valid).
+        #   4. Set `msg.io_0` based on the `toggle_state` argument
+        #      (True -> vacuum on, False -> vacuum off).
+        #   5. Update any internal gripper state variables if needed
+        #      (e.g., `self.gripper_toggle_state`) so the rest of the system
+        #      knows the intended gripper command.
+        #   6. Publish the message on `self.pub_command`.
+        #
+        # The waiting loop below checks `self.at_goal(self.current_position)`
+        # to allow time for the gripper state to take effect.
 
 
 
@@ -132,15 +227,41 @@ class UR3eController(Node):
             spin_all(0.05)
 
     def at_goal(self, destination, tolerance=0.0008):
+        """
+        Check whether the current joint angles are within a tolerance of a goal.
+
+        - `destination` is a list of 6 desired joint values in radians.
+        - `tolerance` defines the maximum absolute difference (per joint) that
+          is allowed for the robot to be considered at the goal.
+        - Returns `True` if all joint errors are below `tolerance`, otherwise
+          returns `False`. This helper is used by move and gripper commands.
+        """
         return all(abs(self.thetas[i] - destination[i]) < tolerance for i in range(6))
 
     def goal_error(self, destination):
+        """
+        Compute the absolute joint-wise error between current and desired poses.
+
+        - `destination` is a list of 6 desired joint values in radians.
+        - Returns a list of 6 absolute errors, one for each joint, which can
+          be logged or inspected when movement timeouts occur.
+        """
         return [abs(self.thetas[i] - destination[i]) for i in range(6)]
 
 
 class BlockMover:
 
     def __init__(self, ur3e_controller, aruco_tracker, dest_positions):
+        """
+        Helper class that coordinates picking and placing blocks using the UR3e.
+
+        - Holds references to the `UR3eController` (for motion and gripper
+          commands) and the `ArucoTracker` (for block detections and positions).
+        - `dest_positions` is a list of table-frame target poses (x, y, z, yaw)
+          that define where different colored blocks should be dropped off.
+        - `intermediate_height` defines the safe Z height used when moving
+          above blocks to avoid collisions with the table or other blocks.
+        """
         self.ur3e_controller = ur3e_controller
         self.aruco_tracker = aruco_tracker
         self.dest_positions = dest_positions
@@ -148,33 +269,75 @@ class BlockMover:
 
     def move_block(self, initial_position, final_position):
 
-        '''
-        initial_position & final_position are lists ---> [x, y, z, yaw]
+        """
+        Move a single block from an initial pose to a final pose.
 
-        TODO: Define the sequence for moving one single block from one position to the other
-        '''
+        - `initial_position` and `final_position` are each lists of the form
+          `[x, y, z, yaw]` in the table frame.
+        - Inside the YOUR CODE section you must define a complete pick-and-place
+          sequence that uses inverse kinematics (via `ik`) and the controller
+          methods (`move_arm`, `gripper_control`) to:
+              1. Move above the block at `initial_position` using a safe Z.
+              2. Move down to grasp height and turn the gripper on.
+              3. Lift the block back to a safe height.
+              4. Move above the `final_position` and lower the block.
+              5. Turn the gripper off and retreat to a safe height.
+        - This function is called by `process_blocks` once the source and
+          destination poses for each block are known.
+        """
 
         ################## YOUR CODE STARTS HERE #######################################
+        # EXPECTATION: Implement an end-to-end pick-and-place sequence.
+        #
+        # A typical implementation will:
+        #   1. Use the provided `ik` function to convert the table-frame
+        #      poses (`initial_position` and `final_position`) into joint
+        #      configurations for the UR3e.
+        #   2. Call `self.ur3e_controller.move_arm(...)` to move to:
+        #        - A safe approach height above the initial block,
+        #        - A lower height to grip the block,
+        #        - A lift height after gripping,
+        #        - A safe approach height above the final location,
+        #        - A lower height to drop the block,
+        #        - A lift or retreat height after release.
+        #   3. Call `self.ur3e_controller.gripper_control(True/False)` at the
+        #      right times to turn suction on for pickup and off for release.
+        #   4. Respect `self.intermediate_height` as a safe Z offset to avoid
+        #      collisions with the environment.
+        #
+        # All motion planning, sequencing, and choice of heights are left for
+        # you to design within this block.
 
 
         ################## YOUR CODE ENDS HERE #######################################
 
     def process_blocks(self, destination):
 
-        '''
-        This function is used for processing the Aruco Markers, find their centers and convert them to table frame. Once that's done, the function decides the sequence of block picking and end destination for each block.
+        """
+        Detect blocks with ArUco markers and decide how to move them.
 
-        TODO: Detect the aruco tags, find their centers, and convert the center position to image frame. 
-              Then, strategize on how you want to move the blocks (eg. different groups, single stack, grouped stacks). You can include all of them in this function if you want to try multiple methods. 
-              
-              You can use the move_block function defined above. Before moving the blocks, send a command to move the robot to home position defined in the UR3eController class
+        High-level responsibilities:
+        - Wait for the `ArucoTracker` node to report at least one detection.
+        - Use the tracker’s latest IDs and positions (in table frame) to
+          identify where blocks of each color are currently located.
+        - Decide on a block-moving strategy (e.g., group blocks by color,
+          stack them, or arrange them in multiple stacks) and map each block
+          to a destination pose from the `destination` list.
+        - Use `BlockMover.move_block` to perform the actual pick-and-place
+          for each block. Before starting, you should typically move the robot
+          to the home joint configuration defined in `UR3eController`.
 
-            Below are the corresponding Aruco IDs for each color in RAL
-                    block_color = Yellow    - id: 100
-                    block_color = Red       - id: 150
-                    block_color = Blue      - id: 200
-
-        '''
+        TODO guidance:
+        - Inside the YOUR CODE section later in this function, you will:
+            1. Interpret `temp_ids` and `marker_positions` produced by the
+               Aruco tracker (IDs: 100 = Yellow, 150 = Red, 200 = Blue).
+            2. Convert those 2D positions into full poses `[x, y, z, yaw]`
+               in the table frame using any fixed assumptions you need for
+               `z` height and yaw.
+            3. Decide which pose in `destination` each block should be moved
+               to and call `self.move_block(initial_pose, final_pose)` for
+               each block in your chosen sequence.
+        """
 
         # Spin the ArucoTracker node until we have at least one detection
         self.aruco_tracker.get_logger().info("Waiting for ArUco detections from /camera...")
@@ -194,12 +357,44 @@ class BlockMover:
             return
 
         ################## YOUR CODE STARTS HERE ##################################
+        # EXPECTATION: Use detections to plan and execute block moves.
+        #
+        # Typical steps to implement here:
+        #   1. Move the UR3e to its home configuration using IK + move_arm.
+        #   2. From `temp_ids` and `marker_positions`, build a list of
+        #      `(aruco_id, (x, y))` pairs; the positions are already in the
+        #      table frame as provided by `ArucoTracker`.
+        #   3. For each detected marker:
+        #        - Infer the corresponding block color from its ID:
+        #             100 -> Yellow, 150 -> Red, 200 -> Blue.
+        #        - Create a full initial pose `[x, y, z, yaw]` for the block,
+        #          where `z` and `yaw` can be fixed constants that match your
+        #          table height and desired block orientation.
+        #        - Choose an appropriate final pose from the `destination`
+        #          list (e.g., first index for Yellow, second for Red, etc.).
+        #   4. Call `self.move_block(initial_pose, final_pose)` for each block
+        #      in the sequence you design (e.g., color-by-color, or stacking).
+        #
+        # You are free to experiment with different strategies (single stack,
+        # grouped stacks, or multiple stacks) as long as every call to
+        # `move_block` follows a safe pick-and-place sequence.
 
-
+        
         ################## YOUR CODE ENDS HERE ##################################
 
 def main():
 
+    """
+    Entry point: set up ROS2, create nodes, and start the pipeline.
+
+    - Initializes the ROS2 client library.
+    - Creates a `UR3eController` node and an `ArucoTracker` node, then registers
+      them in the global `NODES` list so they can be spun via `spin_all`.
+    - Waits briefly for the controller to receive its first joint state.
+    - Defines recommended drop-off poses (`dest_pose`) for Yellow, Red,
+      and Blue blocks and passes them into a `BlockMover` instance.
+    - Starts the block-processing logic by calling `block_mover.process_blocks`.
+    """
     rclpy.init()
 
     try:

@@ -8,6 +8,17 @@ import numpy as np
 
 class PerspectiveCalibrator(Node):
     def __init__(self):
+        """
+        ROS2 node to compute and save a perspective transform for the Gazebo camera.
+
+        - Subscribes to the `/camera` topic and displays the incoming frames
+          in an OpenCV window.
+        - Lets the user click four points in the image that correspond to
+          known points on the table in the world (table) frame.
+        - Once four points are selected, computes a 3x3 homography matrix
+          that maps image coordinates to table-frame coordinates and saves
+          it to `self.output_path` for later use (e.g., by `ArucoTracker`).
+        """
         super().__init__('perspective_calibrator')
 
         self.bridge = CvBridge()
@@ -38,6 +49,16 @@ class PerspectiveCalibrator(Node):
         )
 
     def mouse_callback(self, event, x, y, flags, param):
+        """
+        OpenCV mouse callback used to collect four image points.
+
+        - On each left mouse button click, appends the (x, y) pixel location
+          to `self.selected_points` until four points are stored.
+        - Logs each selected point using the ROS2 logger so you can verify
+          the order and location of your calibration clicks.
+        - These four points are paired with `self.points_in_table_frame`
+          to build the perspective transform in `image_callback`.
+        """
         if event == cv2.EVENT_LBUTTONDOWN and len(self.selected_points) < 4:
             self.selected_points.append((x, y))
             self.get_logger().info(
@@ -45,6 +66,19 @@ class PerspectiveCalibrator(Node):
             )
 
     def image_callback(self, msg: Image):
+        """
+        ROS2 image subscription callback for building and applying the homography.
+
+        - Converts the incoming ROS2 `Image` message to a BGR frame.
+        - Draws any user-selected calibration points on the image.
+        - Once exactly four points have been selected and no matrix is stored
+          yet, computes the perspective transform between the image points and
+          `self.points_in_table_frame`, then saves it to disk.
+        - If a perspective matrix exists, also warps the image and displays
+          the warped view with a reference point overlaid for debugging.
+        - Handles keyboard input: pressing 'q' will log a message and shut
+          down the ROS2 node cleanly.
+        """
         frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
 
         # Draw selected points
@@ -76,6 +110,15 @@ class PerspectiveCalibrator(Node):
             rclpy.shutdown()
 
 def main(args=None):
+    """
+    Standalone entry point to run the Gazebo perspective calibration node.
+
+    - Initializes ROS2, creates a `PerspectiveCalibrator` node, and spins it
+      so that incoming `/camera` images are processed and displayed.
+    - Use this script to generate the `perspective_matrix.npy` file by
+      clicking four correspondences between the image and the table frame
+      before running the main pick-and-place pipeline.
+    """
     rclpy.init(args=args)
     node = PerspectiveCalibrator()
     try:
