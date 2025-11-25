@@ -28,8 +28,8 @@ from cv_bridge import CvBridge, CvBridgeError
 # import custom messages and functions
 from ur3e_mrc_msgs.msg import PositionUR3e, CommandUR3e, GripperInput
 
-from enme480_project_solved.kinematic_functions import KinematicFunctions
-from enme480_project_solved.block_detection_aruco import ArucoTracker 
+from enme480_project.kinematic_functions import KinematicFunctions
+from enme480_project.block_detection_aruco import ArucoTracker 
 
 KF = KinematicFunctions()
 ik = KF.inverse_kinematics
@@ -403,8 +403,8 @@ def main():
         ur3e_controller = UR3eController()
 
         aruco_tracker = ArucoTracker(
-            camera_matrix_path='/home/enme480_docker/enme480_ws/src/enme480_project_solved/enme480_project_solved/config/logitech_webcam_640x480.yaml',
-            perspective_matrix_path='/home/enme480_docker/enme480_ws/src/enme480_project_solved/enme480_project_solved/perspective_matrix.npy'
+            camera_matrix_path='/home/enme480_docker/enme480_ws/src/enme480_project/enme480_project/config/logitech_webcam_640x480.yaml',
+            perspective_matrix_path='/home/enme480_docker/enme480_ws/src/enme480_project/enme480_project/perspective_matrix.npy'
         )
 
         # Register nodes for spin_all()
