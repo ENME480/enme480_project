@@ -36,7 +36,7 @@ class ArucoTracker(Node):
 
         # ROS2 interfaces
         self.bridge = CvBridge()
-        self.image_subscription = self.create_subscription(Image, '/camera', self.image_callback, 10)
+        self.image_subscription = self.create_subscription(Image, '/image_raw', self.image_callback, 10)
         self.image_publisher = self.create_publisher(Image, '/aruco_detection/image', 10)
         self.position_publisher = self.create_publisher(String, '/aruco_detection/positions', 10)
 

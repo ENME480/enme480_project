@@ -80,7 +80,7 @@ class UR3eController(Node):
         # Publishers and Subscribers
         self.pub_command = self.create_publisher(CommandUR3e, 'ur3e/command', 10)
         self.sub_position = self.create_subscription(PositionUR3e, 'ur3e/position', self.position_callback, 10)
-        self.sub_input = self.create_subscription(Bool, '/gripper/vac_on', self.input_callback, 10)
+        self.sub_input = self.create_subscription(GripperInput, 'ur3e/gripper', self.input_callback, 10)
 
         # Timer (if needed)
         # self.timer = self.create_timer(1.0 / self.SPIN_RATE, self.timer_callback)
@@ -107,11 +107,11 @@ class UR3eController(Node):
         flag (`self.digital_in_0`) that can be used by higher-level logic
         to confirm that a grasp has succeeded or that a block has been released.
         """
-        if msg.data == True:
-            self.digital_in_0 = 1
-        else:
-            self.digital_in_0 = 0
-        # self.digital_in_0 = msg.dig_in & 1  
+        # if msg.data == True:
+        #     self.digital_in_0 = 1
+        # else:
+        #     self.digital_in_0 = 0
+        self.digital_in_0 = msg.dig_in & 1  
 
     def move_arm(self, dest, timeout=10.0):
 
